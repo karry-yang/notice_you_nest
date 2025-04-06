@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DeepPartial } from 'typeorm';
 import { User } from '@iam/entities/user.entity';
-import { CreateUserDto } from '../dto/create-user.dto';
+import { CreateUserDto } from '../dto/user/create-user.dto';
 import { IUserRepository } from '../interfaces/user.repository.interface';
 
 @Injectable()
@@ -21,8 +21,8 @@ export class UserRepository implements IUserRepository {
     return this.userRepo.find();
   }
 
-  async findOne(id: number): Promise<User> {
-    const user = await this.userRepo.findOne({ where: { id } });
+  async findOne(userId: bigint): Promise<User> {
+    const user = await this.userRepo.findOne({ where: { userId } });
     if (!user) {
       throw new Error(`User with id ${id} not found`);
     }

@@ -1,6 +1,7 @@
 import { ManualAuditableBase } from '@shared/baseEntity/manualAuditable.entity';
 import { IRole } from './interfaces/role.interface';
-import { Column, Entity, PrimaryColumn } from 'typeorm';
+import { Column, Entity, OneToMany, PrimaryColumn } from 'typeorm';
+import { RolePermission } from './role-permission.entity';
 
 /**
  * @description 角色ID
@@ -22,4 +23,7 @@ export class Role extends ManualAuditableBase implements IRole {
 
   @Column({ type: 'varchar', name: 'role_code', length: 50, nullable: false })
   roleCode!: string;
+
+  @OneToMany(() => RolePermission, rolePermission => rolePermission.role, { nullable: true })
+  rolePermissions?: RolePermission[];
 }

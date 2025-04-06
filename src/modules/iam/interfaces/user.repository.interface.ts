@@ -1,5 +1,5 @@
 import { User } from '@iam/entities/user.entity';
-import { CreateUserDto } from '../dto/create-user.dto';
+import { CreateUserDto } from '../dto/user/create-user.dto';
 
 export interface IUserRepository {
 

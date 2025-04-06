@@ -1,9 +1,12 @@
 import { ManualAuditableBase } from '@shared/baseEntity/manualAuditable.entity';
-import { Column, Entity, PrimaryColumn,OneToMany } from 'typeorm';
+import { Column, Entity, PrimaryColumn, OneToMany } from 'typeorm';
 import { IuserBase } from '@iam/entities/interfaces/user.interface';
 import { GenderEnum } from '@shared/enum/GenderEnum';
 import { VipStatusEnum } from '@shared/enum/VipStatusEnum';
 import { UserRole } from './user-role.entity'; // 引入用户角色关联实体
+import { ManyToOne } from 'typeorm';
+import { Organization } from './organization.entity';
+import { Department } from './department.entity';
 /**
  * @description  iam 权限验证模块的用户类
  * @param userId 用户id
@@ -48,8 +51,6 @@ export class User extends ManualAuditableBase implements IuserBase {
   @Column({ name: 'user_avatar', type: 'varchar', length: 255, comment: '用户头像地址' })
   userAvatar!: string;
 
-  @Column({ name: 'user_superior_id', type: 'bigint', comment: '用户上级id' })
-  userSuperiorId!: bigint;
 
   @Column({ name: 'user_vip_status', type: 'enum', enum: VipStatusEnum, default: VipStatusEnum.UNVIP, comment: '用户vip状态' })
   userVipStatus!: VipStatusEnum;
@@ -57,6 +58,29 @@ export class User extends ManualAuditableBase implements IuserBase {
   @Column({ name: 'user_setting_id', type: 'bigint', comment: '用户设置表id' })
   userSettingId!: bigint;
 
-  @OneToMany(() => UserRole, rolePermission => rolePermission.user, {  nullable: true })
-  userRoles ?: UserRole[];
+  @OneToMany(() => UserRole, userRole => userRole.user, { nullable: true })
+  userRoles?: UserRole[];
+
+  //上级id
+  @Column({ name: 'user_superior_id', type: 'bigint', comment: '用户上级id' })
+  userSuperiorId!: bigint;
+
+  @ManyToOne(() => User, {
+    eager: false, // 不自动加载上级信息
+    lazy: true,  // 启用懒加载，只有访问时才查询上级用户
+    nullable: true,
+  })
+  userSuperior?: User;  // 上级用户的信息
+
+
+  @Column({ name: "organization_id", nullable: true, type: "bigint" })
+  organizationId?: bigint
+  //懒加载组织
+  @ManyToOne(() => Organization, { lazy: true, nullable: true })
+  organization?: Organization
+  @Column({ name: "department_id", nullable: true, type: "bigint" })
+  department_id?: bigint
+  //懒加载部门
+  @ManyToOne(() => Department, { nullable: true, lazy: true })
+  department?: Department
 }

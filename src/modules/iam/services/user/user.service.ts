@@ -1,5 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { CreateUserDto } from '../dto/create-user.dto';
+import { CreateUserDto } from '../dto/user/create-user.dto';
 import { IUserRepository } from '../interfaces/user.repository.interface';
 import { InjectRedis } from '@nestjs-modules/ioredis';
 import Redis from 'ioredis';
