@@ -128,5 +128,37 @@ npm install nest-winston winston
 npm install --save-dev @types/winston
 
 ## @路径
+
 npm install module-alias --save
+环境校验
+npm install joi
+
+npm install --save-dev @types/joi
+
+## 权限策略和权限验证jwt
+
+npm install @nestjs/passport passport
+npm install @nestjs/jwt
+npm install passport-jwt
+npm install --save-dev @types/passport
+
+## 邮箱
+
+npm install smtp-server
+npm install --save-dev @types/smtp-servernpm install smtp-server
+npm install mailparser
+npm install --save-dev @types/mailparser
+
+
+
+##  功能
+### 个人任务
+- 首次加载  listicle/all-listicle tag/all-tag  personal-task/filter(加载最近一周的)  personal-task/filter(加载明天的) personal-task/all(按照时间降序的组高级任务)
+- 按照标签获取
+- 按照清单获取
+- 获取任务详情
+- 获取所有任务摘要
+- 修改
+- 新增
+- 删除
 

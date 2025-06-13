@@ -1,0 +1,51 @@
+Date : 2025-06-05 13:10:37
+Directory : c:\Users\karry-yang\Desktop\NOTICEYOU-NEXTJS\notice_you_service_node\notice_you_service
+Total : 11 files,  232 codes, 76 comments, 28 blanks, all 336 lines
+
+Languages
++------------+------------+------------+------------+------------+------------+
+| language   | files      | code       | comment    | blank      | total      |
++------------+------------+------------+------------+------------+------------+
+| TypeScript |         11 |        232 |         76 |         28 |        336 |
++------------+------------+------------+------------+------------+------------+
+
+Directories
++--------------------------------------------------------------------------------------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| path                                                                                                                                                                     | files      | code       | comment    | blank      | total      |
++--------------------------------------------------------------------------------------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| .                                                                                                                                                                        |         11 |        232 |         76 |         28 |        336 |
+| src                                                                                                                                                                      |         11 |        232 |         76 |         28 |        336 |
+| src\common                                                                                                                                                               |          2 |         52 |         16 |         13 |         81 |
+| src\common\shared                                                                                                                                                        |          1 |         11 |         11 |          3 |         25 |
+| src\common\shared\enum                                                                                                                                                   |          1 |         11 |         11 |          3 |         25 |
+| src\common\utils                                                                                                                                                         |          1 |         41 |          5 |         10 |         56 |
+| src\modules                                                                                                                                                              |          9 |        180 |         60 |         15 |        255 |
+| src\modules\task                                                                                                                                                         |          9 |        180 |         60 |         15 |        255 |
+| src\modules\task\controllers                                                                                                                                             |          1 |         33 |          1 |          2 |         36 |
+| src\modules\task\dto                                                                                                                                                     |          4 |         12 |         10 |          4 |         26 |
+| src\modules\task\dto\personalTask                                                                                                                                        |          4 |         12 |         10 |          4 |         26 |
+| src\modules\task\repositories                                                                                                                                            |          2 |        103 |         23 |          9 |        135 |
+| src\modules\task\repositories (Files)                                                                                                                                    |          1 |        100 |          0 |          9 |        109 |
+| src\modules\task\repositories\interfaces                                                                                                                                 |          1 |          3 |         23 |          0 |         26 |
+| src\modules\task\services                                                                                                                                                |          2 |         32 |         26 |          0 |         58 |
+| src\modules\task\services (Files)                                                                                                                                        |          1 |         24 |         -5 |         -1 |         18 |
+| src\modules\task\services\interface                                                                                                                                      |          1 |          8 |         31 |          1 |         40 |
++--------------------------------------------------------------------------------------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+
+Files
++--------------------------------------------------------------------------------------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| filename                                                                                                                                                                 | language   | code       | comment    | blank      | total      |
++--------------------------------------------------------------------------------------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| c:\Users\karry-yang\Desktop\NOTICEYOU-NEXTJS\notice_you_service_node\notice_you_service\src\common\shared\enum\taskOrderByEnum.ts                                        | TypeScript |         11 |         11 |          3 |         25 |
+| c:\Users\karry-yang\Desktop\NOTICEYOU-NEXTJS\notice_you_service_node\notice_you_service\src\common\utils\buildFilterCondition.util.ts                                    | TypeScript |         41 |          5 |         10 |         56 |
+| c:\Users\karry-yang\Desktop\NOTICEYOU-NEXTJS\notice_you_service_node\notice_you_service\src\modules\task\controllers\personal-task.controller.ts                         | TypeScript |         33 |          1 |          2 |         36 |
+| c:\Users\karry-yang\Desktop\NOTICEYOU-NEXTJS\notice_you_service_node\notice_you_service\src\modules\task\dto\personalTask\PersonalTaskSummary.dto.ts                     | TypeScript |         22 |         10 |          5 |         37 |
+| c:\Users\karry-yang\Desktop\NOTICEYOU-NEXTJS\notice_you_service_node\notice_you_service\src\modules\task\dto\personalTask\personalTasksWithBaseListicleAndBaseTag.dto.ts | TypeScript |         10 |          0 |          2 |         12 |
+| c:\Users\karry-yang\Desktop\NOTICEYOU-NEXTJS\notice_you_service_node\notice_you_service\src\modules\task\dto\personalTask\personalTasksWithListicleTag.dto.ts            | TypeScript |        -10 |          0 |         -2 |        -12 |
+| c:\Users\karry-yang\Desktop\NOTICEYOU-NEXTJS\notice_you_service_node\notice_you_service\src\modules\task\dto\personalTask\psersonal-task-filter.dto.ts                   | TypeScript |        -10 |          0 |         -1 |        -11 |
+| c:\Users\karry-yang\Desktop\NOTICEYOU-NEXTJS\notice_you_service_node\notice_you_service\src\modules\task\repositories\interfaces\personal-task.repository.interface.ts   | TypeScript |          3 |         23 |          0 |         26 |
+| c:\Users\karry-yang\Desktop\NOTICEYOU-NEXTJS\notice_you_service_node\notice_you_service\src\modules\task\repositories\personal-task.repository.ts                        | TypeScript |        100 |          0 |          9 |        109 |
+| c:\Users\karry-yang\Desktop\NOTICEYOU-NEXTJS\notice_you_service_node\notice_you_service\src\modules\task\services\interface\personal-task.interface.ts                   | TypeScript |          8 |         31 |          1 |         40 |
+| c:\Users\karry-yang\Desktop\NOTICEYOU-NEXTJS\notice_you_service_node\notice_you_service\src\modules\task\services\personal-task.service.ts                               | TypeScript |         24 |         -5 |         -1 |         18 |
+| Total                                                                                                                                                                    |            |        232 |         76 |         28 |        336 |
++--------------------------------------------------------------------------------------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+

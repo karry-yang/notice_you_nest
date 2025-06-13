@@ -1,25 +1,26 @@
 import { Module } from '@nestjs/common';
+import { DatabaseModule } from '@database/database.module';
+import { UserModule } from '@user/user.module';
 import { ConfigModule } from '@nestjs/config';
-import { DatabaseModule } from './shared/database.module';
-import { UserModule } from '@iam/user.module';
-import { join } from 'path';
-import { LoggingModule } from '@logging/logging.module';
+import { AuthModule } from '@auth/auth.module';
+import { MailModule } from '@mail/mail.moudle';
+import mailConfig from '@mail/config/mail.config'
+import { TaskModule } from '@task/task.module';
+import { CheckinModule } from './modules/checkIn/checkin.moduel';
 @Module({
   imports: [
-    // ConfigModule.forRoot({
-    //   envFilePath: [
-    //     join(__dirname, '..', '.env.local'), // 优先使用.env.local
-    //     join(__dirname, '..', '.env'), // 后备使用.env
-    //   ],
-    // }),
-
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: `.env.${process.env.NODE_ENV ?? 'local'}`,
+      envFilePath: '.env.development',
+      load: [mailConfig], // 加载 mailConfig
     }),
     DatabaseModule,
+    AuthModule,
     UserModule,
-    LoggingModule,
+    MailModule,
+    TaskModule,
+    CheckinModule
   ],
+  
 })
 export class AppModule {}

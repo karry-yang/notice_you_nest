@@ -1,0 +1,24 @@
+/**
+ *   @description 任务分组排序规则
+ 
+*/
+
+export enum TaskOrderBy {
+    //时间
+  TIME_DES = 'TIME_DES',
+  TIME_ASC = 'TIME_ASC ',
+//   taskPriority
+PRIORITY_DES='PRIORITY_DES',
+PRIORITY_ASC='PRIORITY_ASC',
+//清单分组
+LISTICLE_GROUP='LISTICLE_GROUP',
+//标签
+TAG_GROUP='TAG_GROU',
+//指派类型
+ASSINGEE_CREACTER='ASSINGEE_CREACTER',
+// 指派部门
+ASSINGEE_DEP='ASSINGEE_DEP',
+//完成率
+CHECKIN_RATE_DES='CHECKIN_RATE_DES'
+
+}

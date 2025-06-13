@@ -4,9 +4,14 @@
   "compilerOptions": {
     "baseUrl": "./",
     "paths": {
-      "@logging/*": ["src/modules/logging/*"],
-      "@iam/*": ["src/modules/iam/*"],
-      "@shared/*": ["src/share/*"]
+      "@database/*": ["src/modules/database/*"],
+      "@user/*": ["src/modules/user/*"],
+      "@auth/*": ["src/modules/auth/*"],
+      "@mail/*": ["src/modules/mail/*"],
+      "@task/*": ["src/modules/task/*"],
+      "@checkin/*": ["src/modules/checkin/*"],
+      "@notification/*": ["src/modules/notification/*"],
+      "@shared/*": ["src/common/shared/*"]
     }
   }
 }

@@ -12,9 +12,14 @@
     "outDir": "./dist",
     "baseUrl": "./",
     "paths": {
-      "@logging/*": ["src/modules/logging/*"],
-      "@iam/*": ["src/modules/iam/*"],
-      "@shared/*": ["src/shared/*"]
+      "@database/*": ["src/modules/database/*"],
+      "@user/*": ["src/modules/user/*"],
+      "@shared/*": ["src/common/shared/*"],
+      "@auth/*": ["src/modules/auth/*"],
+      "@mail/*": ["src/modules/mail/*"],
+      "@task/*": ["src/modules/task/*"],
+      "@checkin/*": ["src/modules/checkin/*"],
+      "@notification/*": ["src/modules/notification/*"],
     },
     "incremental": true,
     "skipLibCheck": true,
