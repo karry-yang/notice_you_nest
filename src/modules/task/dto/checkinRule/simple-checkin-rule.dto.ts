@@ -1,45 +1,49 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiPro, ApiProperty, ApiPropertyOptional, ApiPropertyOptionalpertyOptional } from '@nestjs/swagger';
 import { TaskCheckinType } from '@shared/enum/TaskCheckinType';
 import { TaskTypeEnum } from '@shared/enum/TaskTypeEnum';
-import { Expose } from 'class-transformer';
-import { IsEnum, IsJSON, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
+import { Expose, Type } from 'class-transformer';
+import { IsArray, IsEnum, IsJSON, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 
 export class SimpleCheckinRuleDto {
-  @ApiProperty({ description: '规则id' })
-  @Expose({ name: 'rule_id' })
-  ruleId!: string;
+  @ApiPropertyOptional({ description: '规则id' })
+  @Expose()
+  ruleId?: string;
 
-  @ApiProperty({ description: '关联的任务id' })
-  @Expose({ name: 'task_id' })
+  @ApiPropertyOptional({ description: '关联的任务id' })
+  @Expose()
   @IsString()
   @IsNotEmpty()
-  taskId!: string;
+  taskId?: string;
 
   @ApiProperty({ description: '关联的任务类型' })
-  @Expose({ name: 'task_type' })
+  @Expose()
   @IsEnum(TaskTypeEnum)
   @IsNotEmpty()
   taskType!: TaskTypeEnum;
-  
+
   @ApiProperty({ enum: TaskCheckinType, enumName: 'TaskCheckinType', description: '打卡类型' })
   @IsEnum(TaskCheckinType)
   ruleType!: TaskCheckinType;
-
-  @ApiProperty({ description: '打卡的天数序列' })
-  @IsJSON()
+  
+  @ApiPropertyOptional({ description: '打卡的天数序列', type: [String] })
+  @IsArray()
+  @IsString({ each: true })
   @IsOptional()
-  @Expose({ name: 'days' })
-  days?: string;
+  @Expose()
+  @Type(() => String)
+  days?: string[];
 
-  @ApiProperty({ description: '打卡的时间' })
-  @IsJSON()
+  @ApiPropertyOptional({ description: '打卡的时间', type: [String] })
+  @IsArray()
+  @IsString({ each: true })
   @IsOptional()
-  @Expose({ name: 'times' })
-  times?: string;
+  @Expose()
+  @Type(() => String)
+  times?: string[];
 
-  @ApiProperty({ description: '间隔天数' })
+  @ApiPropertyOptional({ description: '间隔天数' })
   @IsNumber()
   @IsOptional()
-  @Expose({ name: 'interval_days' })
+  @Expose()
   intervalDays?: number;
 }

@@ -1,12 +1,12 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PriorityEnum } from '@shared/enum/PriorityEnum';
-import { StatusEnum } from '@shared/enum/RowStatusEnum';
+import { RowStatusEnum } from '@shared/enum/RowStatusEnum';
 import { Expose } from 'class-transformer';
 import { IsEnum, IsNumber, IsOptional, IsString } from 'class-validator';
 import { SimpleListicleDto } from '../listicle/simple-listicle.dto';
 import { SimpleTagDto } from '../tag/simple-tag.dto';
 import { SimpleCheckinRuleDto } from '../checkinRule/simple-checkin-rule.dto';
-export class BasePersonalTaskDto {
+export class DetailPersonalTaskDto {
   @ApiProperty({ description: '任务id' })
   @IsString()
   @Expose() //plainToInstance返回给前端
@@ -49,9 +49,9 @@ export class BasePersonalTaskDto {
   @ApiProperty({ description: '创建时间' })
   createdAt!: Date;
 
-  @ApiProperty({ enum: StatusEnum, enumName: 'StatusEnum', description: '状态' })
+  @ApiProperty({ enum: RowStatusEnum, enumName: 'RowStatusEnum', description: '状态' })
   @Expose()
-  status!: StatusEnum;
+  status!: RowStatusEnum;
 
   @ApiProperty({ description: '创建人' })
   @Expose()
@@ -61,17 +61,26 @@ export class BasePersonalTaskDto {
   @Expose()
   checkinRule!: SimpleCheckinRuleDto;
 
-  @ApiProperty({type:SimpleListicleDto, description: '任务清单i' })
+  @ApiPropertyOptional({ description: '任务的清单id' })
+  @IsOptional()
   @Expose()
-  listicle!: SimpleListicleDto;
+  listicleId?: string;
 
-  @ApiProperty({type:()=>SimpleTagDto,description:'任务简单标签'})
+  @ApiPropertyOptional({ description: '任务的标签ids' })
+  @IsOptional()
   @Expose()
-  tags!:SimpleTagDto[]
+  tagIds?: string[];
+  // @ApiProperty({type:SimpleListicleDto, description: '任务清单i' })
+  // @Expose()
+  // listicle!: SimpleListicleDto;
+
+  // @ApiProperty({type:()=>SimpleTagDto,description:'任务简单标签'})
+  // @Expose()
+  // tags!:SimpleTagDto[]
   //计算属性
   @ApiProperty({ description: '所在层数' })
   @IsOptional()
   @IsNumber()
   @Expose()
-  leavel?: number;
+  level?: number;
 }

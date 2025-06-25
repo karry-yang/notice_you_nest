@@ -2,7 +2,7 @@
 
 
 /**
- * @description 状态枚举类状态0-inactive 1:active 2:delete
+ * @description 行状态枚举类状态0-inactive 1:active 2:delete
  * DELETE  逻辑删除0
  * USEABLE  可用1
  */

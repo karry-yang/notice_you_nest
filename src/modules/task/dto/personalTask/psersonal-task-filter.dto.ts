@@ -36,10 +36,9 @@ export class PersonalTaskFilterDto {
   @IsString()
   tagId?: string[];
 
-  @ApiProperty({ description: '最新打卡状态' })
+  @ApiProperty({ description: '任务状态  完成true --未完成false' })
   @IsOptional()
-  @IsEnum(TaskCheckinStatusEnum)
-  lastCheckinStatus?: TaskCheckinStatusEnum[];
+  lastCheckinStatus?: boolean;
 
   @ApiProperty({ description: '排序规则' })
   @IsOptional()

@@ -4,7 +4,7 @@ import { Listicle } from '@task/entities/listicle.entity';
 import { PersonalTask } from '@task/entities/personal-task.entity';
 import { Tag } from '@task/entities/tag.entity';
 import { CheckinRule } from '@task/entities/task-checkin-rule.entity';
-import { BasePersonalTaskDto } from './personal-task.dto';
+import { BasePersonalTaskDto } from './base-personal-task.dto';
 import { BaseTagDto } from '../tag/base-tag.dto';
 import { Transform } from 'class-transformer';
 

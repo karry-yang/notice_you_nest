@@ -63,7 +63,7 @@ export interface AssigneeCursor {
   createdAt: string;
 }
 
-  export type CursorTypes = TaskCursor | CheckinCursor | FocusCursor | UserCursor | AssigneeCursor;
+  export type CursorTypes = TaskCursor |TaskLevelCursor|TaskUpdatedCursor| CheckinCursor | FocusCursor | UserCursor | AssigneeCursor;
 
   //
 export function encodeCursor<T extends CursorTypes>(cursor: T, type: string): string {

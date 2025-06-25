@@ -51,3 +51,6 @@ export const IFocusRepositoryToken=Symbol('IFocusRepository')
 //打卡规则
 
 export const ICheckinRuleRepositoryToken=Symbol('ICheckinRuleRepository')
+
+//mongodb
+//redis

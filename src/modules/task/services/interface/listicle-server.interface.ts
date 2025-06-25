@@ -2,7 +2,7 @@ import { CreateListicleDto } from '@task/dto/listicle/createListicle.dto';
 import { UpdateListicleDto } from '@task/dto/listicle/updateListicle.dto';
 import { Listicle } from '@task/entities/listicle.entity';
 
-export interface IListService {
+export interface IListTicleService {
   //查询单个清单携带任务
   getListicleWithTask(listicleId:string): Promise<Listicle | null>;
   //获取个人可见清单  包括组织部门清单  

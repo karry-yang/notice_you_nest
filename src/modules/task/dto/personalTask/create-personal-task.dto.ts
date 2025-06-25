@@ -1,6 +1,6 @@
 import { ListicleTypeEnum } from 'src/common/shared/enum/ListicleTypeEnum';
 import { PriorityEnum } from 'src/common/shared/enum/PriorityEnum';
-import { IsEnum, IsNotEmpty, IsOptional, IsString, IsDate, IsNumber, IsISO8601, IsArray, ValidateNested } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString, IsDate, IsNumber, IsISO8601, IsArray, ValidateNested, IsBoolean } from 'class-validator';
 import { CreateCheckInRuleDto } from '../checkinRule/create-checkin-rule.dto';
 import { CreateListicleDto } from '../listicle/createListicle.dto';
 import { CreateTagDto } from '../tag/createTag.dto';
@@ -68,8 +68,10 @@ export class CreatePersonalTaskDto {
   @IsString()
   listicleId?: string;
 
-  //拥有的文件路径
-  hasFiles?: string[];
+  // 是否拥有附加文件
+  @ApiProperty({description:'是否拥有附加文件'})
+  @IsBoolean()
+  hasFiles?: boolean;
   // @IsNotEmpty()
   // @IsNumber()
   // taskCheckinRuleId?: string;

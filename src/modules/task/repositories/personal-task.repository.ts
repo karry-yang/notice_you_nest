@@ -1,19 +1,13 @@
 import { InjectRepository } from '@nestjs/typeorm';
 import { IPersonalTaskRepository } from './interfaces/personal-task.repository.interface';
 import { PersonalTask } from '@task/entities/personal-task.entity';
-import { encodeCursor, PaginatedResult, TaskCursor, TaskUpdatedCursor } from 'src/common/types/paginatedResult.interface';
+import { encodeCursor, PaginatedResult, TaskUpdatedCursor } from 'src/common/types/paginatedResult.interface';
 import { DataSource, Repository } from 'typeorm';
-import { PersonalTaskTag } from '@task/entities/personal-task-tag.entity';
-import { TaskCursorDto, TaskLevelCursorDto, TaskUpdatedCursorDto } from 'src/common/dto/paginatedResult.dto';
-import { BasePersonalTasksGroupDto } from '@task/dto/personalTask/base-personal-tasks-group.dto';
-import { BasePersonalTaskSummaryDto } from '@task/dto/personalTask/personal-task-summary.dto';
+import { TaskCursorDto, TaskLevelCursorDto } from 'src/common/dto/paginatedResult.dto';
 import { PersonalTaskFilterDto } from '@task/dto/personalTask/psersonal-task-filter.dto';
-import { buildFilterConditionWithParams } from 'src/common/utils/buildFilterCondition.util';
 import { attributesPersonalTask } from './sql';
-import { fa } from '@faker-js/faker/.';
 import { CreatePersonalTaskDto } from '@task/dto/personalTask/create-personal-task.dto';
 import { UpdatePersonalTaskDto } from '@task/dto/personalTask/update-personal-task.dto';
-import { CreateCheckInRuleDto } from '@task/dto/checkinRule/create-checkin-rule.dto';
 import { Inject } from '@nestjs/common';
 import { ICheckinRuleRepositoryToken, IListicleRepositoryToken } from 'src/common/token/tokens';
 import { ICheckinRuleRepository } from './interfaces/checkin-rule.repository.interface';
@@ -21,6 +15,12 @@ import { ITagRepository } from './interfaces/tag.repository.interface';
 import { IListicleRepository } from './interfaces/listicle.repository.interface';
 import { generateSnowflakeId } from '@shared/lib/snowflake';
 import { TaskTypeEnum } from '@shared/enum/TaskTypeEnum';
+import { RepositoryPersonalTaskDto } from '@task/dto/personalTask/reposotory-personal-task.dto';
+import { ne } from '@faker-js/faker/.';
+import { TaskStatusEnum } from '@shared/enum/TaskStatusEnum';
+import { DetailPersonalTaskDto } from '@task/dto/personalTask/detail-personal-task.dto';
+import { CheckinRule } from '@task/entities/task-checkin-rule.entity';
+import { SimpleCheckinRuleDto } from '@task/dto/checkinRule/simple-checkin-rule.dto';
 
 /**
  * personTask 需要直接携带tag的属性和listicle属性  前端会预加载所有的清单信息和标签信息  后端只需要返回tagids listile  cheinRuleId
@@ -38,19 +38,21 @@ export class PersonalTaskRepository implements IPersonalTaskRepository {
     private readonly listicleRep: IListicleRepository
   ) {}
 
-  async findPersonalTaskByTaskId(userId: string, taskId: string): Promise<any> {
+  async findPersonalTaskByTaskId(userId: string, taskId: string): Promise<RepositoryPersonalTaskDto | null> {
     const sql = `
     SELECT 
-  ${attributesPersonalTask}
+      ${attributesPersonalTask}
     FROM personal_task pt
-    WHERE pt.task_id=?
-    AND  pt.created_by=?
-    AND   pt.status=1
-    `;
+    WHERE pt.task_id = ?
+      AND pt.created_by = ?
+      AND pt.status = 1
+    LIMIT 1
+  `;
     const result = await this.dataSource.query(sql, [taskId, userId]);
-    return result;
+    return result[0] ?? null;
   }
-  async findPersonalTaskWithTagAndListicleByTaskId(userId: string, taskId: string): Promise<any> {
+
+  async findPersonalTaskWithTagAndListicleByTaskId(userId: string, taskId: string): Promise<RepositoryPersonalTaskDto[] | null> {
     const sql = `
     SELECT 
         ${attributesPersonalTask}
@@ -71,8 +73,14 @@ export class PersonalTaskRepository implements IPersonalTaskRepository {
   /**
    * @description   查找任务下一层数据 分页
    */
-  async finPersonalTasksWithChildrensByTaskId(userId: string, parentTaskId: string, level: number = 0, nextCursor?: TaskLevelCursorDto): Promise<any> {
-    let param: any[] = [userId, parentTaskId, level + 1];
+  async finPersonalTasksWithChildrensByTaskId(
+    userId: string,
+    parentTaskId: string,
+    level: number = 0,
+    limit: number = 10,
+    nextCursor?: TaskCursorDto
+  ): Promise<PaginatedResult<RepositoryPersonalTaskDto> | null> {
+    let param: any[] = [userId, parentTaskId, level + 1, level + 1];
     let cursorCondition = '';
     if (nextCursor?.createdAt && nextCursor?.taskId) {
       cursorCondition = `
@@ -83,7 +91,7 @@ export class PersonalTaskRepository implements IPersonalTaskRepository {
 
       param.push(nextCursor.createdAt, nextCursor.createdAt, nextCursor.taskId);
     }
-
+    param.push(limit + 1);
     const sql = `
     WITH RECURSIVE task_hierarchy AS (
       SELECT 
@@ -100,27 +108,61 @@ export class PersonalTaskRepository implements IPersonalTaskRepository {
       FROM personal_task child
       JOIN task_hierarchy th ON child.task_parent_id = th.task_id
        WHERE th.level < 6  -- 限制最大层级为6
+       AND th.level=?
   
     )
     SELECT 
- ${attributesPersonalTask}
- ptt.tag_id AS tagId,
-pt.level AS level
+pt *
     FROM task_hierarchy pt
     LEFT JOIN checkin_rule cr ON pt.task_id = cr.rule_id
-    LEFT JOIN listicle l ON pt.task_listicle_id = l.listicle_id
-    LEFT JOIN personal_task_tag ptt ON ptt.personal_task_id = pt.task_id
     WHERE pt.level=?
      AND cr.taks_type='${TaskTypeEnum.PERSONAL}'
 ${cursorCondition}
+Limit ?
+ ORDER BY pt.updated_at DESC, pt.task_id DESC
   `;
-    return await this.dataSource.query(sql, param);
+    const rawResults = await this.dataSource.query(sql, param);
+    if (rawResults.length <= 0) {
+      return null;
+    }
+    //计算浮标
+    const taskIds = rawResults.map((row) => row.taskId);
+    const temp: { task_id: string; created_at: string } = taskIds;
+    const hasNext = taskIds.length > limit;
+    const taskIdsLimited = taskIds.slice(0, limit);
+    const placeholders = taskIdsLimited.map(() => '?').join(',');
+
+    // 获取tagid
+    const detailResults = await this.dataSource.query(`SELECT ${attributesPersonalTask},pt.tag_id AS tagId, pt.level AS level  FROM personal_task_tag  WHERE task_id IN (${placeholders}) `);
+    //通过id获取任务具备的tagids
+
+    const tasks = Array.from(rawResults.values());
+
+    // Step 4: 计算 nextCursor
+    const last = temp[tasks.length - 1];
+    const next = hasNext
+      ? {
+          createdAt: last.createdAt,
+          taskId: last.taskId,
+        }
+      : null;
+
+    return {
+      data: detailResults,
+      nextCursor: next ? encodeCursor(next, 'TaskUpdatedCursor') : null,
+      hasNextPage: hasNext,
+    };
   }
 
   /**
    * @description    最近的时间作为限制   一周 传入参数不定
    */
-  async findPersonlTasksByUserIdFiltedByRencent(userId: string, filter: PersonalTaskFilterDto, limit: number = 10, nextCursor?: TaskUpdatedCursor): Promise<any> {
+  async findPersonlTasksByUserIdFiltedByRencent(
+    userId: string,
+    filter: PersonalTaskFilterDto,
+    limit: number = 10,
+    nextCursor?: TaskUpdatedCursor
+  ): Promise<PaginatedResult<RepositoryPersonalTaskDto> | null> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     let filterSql = ``;
@@ -156,12 +198,7 @@ ${cursorCondition}
   pt.has_files ,
   pt.task_parentId ,
 
-  cr.rule_type ,
-  cr.days ,
-  cr.times ,
-  cr.interval_days,
-
-  l.listicle_id ,
+  pt.listicle_id ,
 
   pt.created_at ,
   pt.updated_at ,
@@ -170,14 +207,12 @@ ${cursorCondition}
   pt.status 
     FROM personal_task pt
     LEFT JOIN checkin_rule cr ON pt.task_id = cr.rule_id
-    LEFT JOIN listicle l ON pt.task_listicle_id = l.listicle_id
     WHERE  pt.created_by=?
-     AND cr.taks_type='${TaskTypeEnum.PERSONAL}'
     ${filterSql}
      ORDER BY pt.updated_at DESC, pt.task_id DESC
     LIMIT ?
     `;
-    const taskIdRows: { taskId: string }[] = await queryRunner.query(stepOne, params);
+    const taskIdRows: { taskId: string; createdAt: string }[] = await queryRunner.query(stepOne, params);
     if (taskIdRows.length === 0) {
       return { data: [], nextCursor: null, hasNextPage: false };
     }
@@ -192,36 +227,17 @@ ${cursorCondition}
     const detailSql = `
       SELECT
          ${attributesPersonalTask}
-ptt.tag_id AS  tagId
+      ptt.tag_id AS  tagId
       FROM personal_task pt
       LEFT JOIN checkin_rule cr ON pt.task_id = cr.rule_id
       LEFT JOIN personal_task_tag ptt ON ptt.personal_task_id = pt.task_id
       WHERE pt.task_id IN (${placeholders});
        AND cr.taks_type='${TaskTypeEnum.PERSONAL}'
+          ORDER BY pt.updated_at DESC, pt.task_id DESC
     `;
     const detailRows = await queryRunner.query(detailSql, taskIdsLimited);
 
-    // Step 3: 聚合标签
-    const groupedMap = new Map<string, any>();
-    for (const row of detailRows) {
-      if (!groupedMap.has(row.taskId)) {
-        groupedMap.set(row.taskId, {
-          ...row,
-          tags: [],
-        });
-      }
-      if (row.tagId) {
-        groupedMap.get(row.taskId).tags.push({
-          tagId: row.tagId,
-          tagTtitle: row.tagTitle,
-          tagColor: row.tagColor,
-          tagDescription: row.tagDescription,
-          parentId: row.tagParentId,
-        });
-      }
-    }
-
-    const tasks = Array.from(groupedMap.values());
+    const tasks = Array.from(taskIdRows.values());
 
     // Step 4: 计算 nextCursor
     const last = tasks[tasks.length - 1];
@@ -233,12 +249,12 @@ ptt.tag_id AS  tagId
       : null;
 
     return {
-      data: groupedMap,
-      nextCursor: next,
+      data: detailRows,
+      nextCursor: next ? encodeCursor(next, 'TaskUpdatedCursor') : null,
       hasNextPage: hasNext,
     };
   }
-  async findPersonalTasksWithTagAndListicleByTagId(userId: string, tagId: string, limit: number, nextCursor?: TaskCursorDto): Promise<any> {
+  async findPersonalTasksWithTagAndListicleByTagId(userId: string, tagId: string, limit: number, nextCursor?: TaskCursorDto): Promise<PaginatedResult<RepositoryPersonalTaskDto> | null> {
     //通过标签id去获取任务数据  获取所有任务标签id=>获取所有任务id 分页
 
     const queryRunner = this.dataSource.createQueryRunner();
@@ -249,94 +265,61 @@ ptt.tag_id AS  tagId
 
     //标签中任务不会重复 有的话仅有一个  获取的数据 不会重复
     const oneStepsql = `
-    SELECT ptt.task_id
+    SELECT ptt.task_id 
     FROM  personal_task_tag ptt
     WHERE ptt.tag_id=?
+     AND (
+        ptt.created_at < ? OR 
+        (ptt.created_at = ? AND ptt.task_id < ?)
+      )
+     LIMIT ?
     `;
-    const taskIdRows: { task_id: string }[] = await queryRunner.query(oneStepsql, [tagId]);
+    const taskIdRows: { task_id: string; created_at }[] = await queryRunner.query(oneStepsql, [tagId, nextCursor?.createdAt, nextCursor?.createdAt, nextCursor?.taskId]);
     if (taskIdRows.length === 0) {
-      return { data: [], hasNextPage: false };
+      return { data: [], nextCursor: null, hasNextPage: false };
     }
     const taskIds = taskIdRows.map((row) => row.task_id);
 
     const placeholders = taskIds.map(() => '?').join(',');
 
-    // 参数
-    const params: any[] = [userId];
-
-    if (nextCursor?.createdAt && nextCursor?.taskId) {
-      filterSql = `
-      AND (
-        pt.created_at < ? OR 
-        (pt.created_at = ? AND pt.task_id < ?)
-      )
-    `;
-      params.push(nextCursor.createdAt, nextCursor.createdAt, nextCursor.taskId);
-    }
-
-    params.push(...taskIds);
-    params.push(limit + 1); // 多查一条判断是否还有下一页
-    // 通过任务id去获取任务 排序分页
     const detailSql = `
       SELECT
   ${attributesPersonalTask}
-        0 AS level,
+  ptt.tag_id AS  tagId,
+        0 AS level
       FROM personal_task pt
       LEFT JOIN checkin_rule cr ON pt.task_id = cr.rule_id
-      LEFT JOIN listicle l  ON pt.task_listicle_id = l.listicle_id
+       LEFT JOIN personal_task_tag ptt ON ptt.personal_task_id = pt.task_id
       WHERE pt.created_by=?
       AND pt.task_id IN (${placeholders});
        AND cr.taks_type='${TaskTypeEnum.PERSONAL}'
-  ${filterSql}
   ORDER BY pt.created_at DESC, pt.task_id DESC
-      LIMIT ?
-
     `;
 
     //查询
-    const detailRows = await queryRunner.query(detailSql, params);
+    const detailRows = await queryRunner.query(detailSql, [userId]);
 
-    // Step 3: 聚合标签
-    const groupedMap = new Map<string, any>();
-    for (const row of detailRows) {
-      if (!groupedMap.has(row.taskId)) {
-        groupedMap.set(row.taskId, {
-          ...row,
-          tags: [],
-        });
-      }
-      if (row.tagId) {
-        groupedMap.get(row.taskId).tags.push({
-          listicleId: row.listicleId,
-          listileIcon: row.listicleIcon,
-          listicleTitle: row.listicelTitle,
-          listicleType: row.listicleType,
-          parentId: row.listicleParentId,
-        });
-      }
-    }
-
-    const tasks = Array.from(groupedMap.values());
+    const tasks = Array.from(taskIdRows.values());
 
     // Step 4: 计算 nextCursor
     const last = tasks[tasks.length - 1];
     const next = last
       ? {
-          createdAt: last.createdAt,
-          taskId: last.taskId,
+          createdAt: last.created_at,
+          taskId: last.task_id,
         }
       : null;
 
     return {
-      data: tasks,
+      data: detailRows,
       hasNextPage: !!last,
-      nextCursor: next,
+      nextCursor: next ? encodeCursor(next, 'TaskCursor') : null,
     };
   }
   /**
    * @description 按照标签获取任务  首先获取的是最顶级任务
    */
-  async findPersonalTasksWithTagAndListicleByListicleId(userId: string, listicleId: string, limit: number, nextCursor?: TaskCursorDto): Promise<any> {
+  async findPersonalTasksWithTagAndListicleByListicleId(userId: string, listicleId: string, limit: number, nextCursor?: TaskCursorDto): Promise<PaginatedResult<RepositoryPersonalTaskDto>> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
 
@@ -368,10 +351,10 @@ ptt.tag_id AS  tagId
       ORDER BY pt.created_at DESC, pt.task_id DESC
       LIMIT ?;
     `;
-      const taskIdRows: { task_id: string }[] = await queryRunner.query(idSql, params);
+      const taskIdRows: { task_id: string; created_at: string }[] = await queryRunner.query(idSql, params);
 
       if (taskIdRows.length === 0) {
-        return { data: [], hasNextPage: false };
+        return { data: [], nextCursor: null, hasNextPage: false };
       }
 
       const taskIds = taskIdRows.map((row) => row.task_id);
@@ -395,41 +378,21 @@ ptt.tag_id AS  tagId
     `;
       const detailRows = await queryRunner.query(detailSql, taskIdsLimited);
 
-      // Step 3: 聚合标签
-      const groupedMap = new Map<string, any>();
-      for (const row of detailRows) {
-        if (!groupedMap.has(row.taskId)) {
-          groupedMap.set(row.taskId, {
-            ...row,
-            tags: [],
-          });
-        }
-        if (row.tagId) {
-          groupedMap.get(row.taskId).tags.push({
-            tagId: row.tagId,
-            tagTtitle: row.tagTitle,
-            tagColor: row.tagColor,
-            tagDescription: row.tagDescription,
-            parentId: row.tagParentId,
-          });
-        }
-      }
-
-      const tasks = Array.from(groupedMap.values());
+      const tasks = Array.from(taskIdRows.values());
 
       // Step 4: 计算 nextCursor
       const last = tasks[tasks.length - 1];
-      const nextCursor = hasNextPage
+      const next = hasNextPage
         ? {
-            createdAt: last.createdAt,
-            taskId: last.taskId,
+            createdAt: last.created_at,
+            taskId: last.task_id,
           }
         : null;
 
       return {
-        data: tasks,
-        hasNextPage,
-        nextCursor,
+        data: detailRows,
+        hasNextPage: !!last,
+        nextCursor: next ? encodeCursor(next, 'TaskCursor') : null,
       };
     } finally {
       await queryRunner.release();
@@ -443,12 +406,28 @@ ptt.tag_id AS  tagId
    * @param filter
    * @param nextCursor
    */
-  async findPersonTasksByFilter(userId: string, limit: number, startTime: Date, endTime: Date, nextCursor?: TaskCursorDto): Promise<any> {
+  async findPersonTasksByFilter(
+    userId: string,
+    startTime: string,
+    endTime: string,
+    limit: number,
+    nextCursor?: TaskCursorDto
+  ): Promise<PaginatedResult<{
+    tasks: RepositoryPersonalTaskDto[];
+    taskTag: { taskId: string; tagId: string }[];
+  }> | null> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
-
-    //获取时间范围内的最顶级任务  携带了清单上和打卡id信息  打卡id不需要使用
-    const sqlRow = `
+    let cursorCondition = ``;
+    if (nextCursor?.createdAt && nextCursor?.taskId) {
+      cursorCondition = `
+       AND (
+        pt.created_at < ? OR 
+        (pt.created_at = ? AND pt.task_id < ?)
+      );`;
+    }
+    try {
+      const sqlRow = `
 WITH RECURSIVE task_hierarchy AS (
     -- 基础查询：选择根节点（第一层任务）
     SELECT 
@@ -501,28 +480,49 @@ SELECT
 ${attributesPersonalTask},
 pt.level AS level
 FROM task_hierarchy pt
+WHERE 1=1
+${cursorCondition}
 
-`;
-    const taskIdRows = await queryRunner.query(sqlRow, [userId, startTime, endTime]);
-    if (taskIdRows.length === 0) {
-      return [];
-    }
+;`;
 
-    const taskIds = taskIdRows.map((row) => row.task_id);
-    const taskIdsLimited = taskIds.slice(0, limit);
-    const placeholders = taskIdsLimited.map(() => '?').join(',');
+      const taskIdRows = await queryRunner.query(sqlRow, [userId, startTime, endTime, limit + 1, nextCursor?.createdAt, nextCursor?.createdAt, nextCursor?.taskId]);
 
-    //携带标签信息- personal_task_tag的task_id去查询tagIds
-    const sqlWithTagIds = `   
-          SELECT ptt.task_id AS taskId  ptt.tag_id AS  tagId
+      if (taskIdRows.length === 0) {
+        return {
+          data: [],
+          nextCursor: null,
+          hasNextPage: false,
+        };
+      }
+
+      const limitedTasks = taskIdRows.slice(0, limit);
+      const taskIds = limitedTasks.map((t) => t.task_id);
+
+      const placeholders = taskIds.map(() => '?').join(',');
+      const sqlWithTagIds = `
+      SELECT ptt.task_id AS taskId, ptt.tag_id AS tagId
       FROM personal_task_tag ptt
       WHERE ptt.task_id IN (${placeholders})`;
-    const TaskTagIds = await queryRunner.query(sqlWithTagIds, []);
-    return { tasks: taskIdRows, taskTag: TaskTagIds };
+
+      const TaskTagIds = await queryRunner.query(sqlWithTagIds, taskIds);
+
+      return {
+        data: [
+          {
+            tasks: limitedTasks,
+            taskTag: TaskTagIds,
+          },
+        ],
+        nextCursor: limitedTasks.length === limit ? limitedTasks[limitedTasks.length - 1].task_id : null,
+        hasNextPage: taskIdRows.length > limit,
+      };
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   //
-  async updatePersonalTask(userId: string, dto: UpdatePersonalTaskDto): Promise<any> {
+  async updatePersonalTask(userId: string, dto: UpdatePersonalTaskDto): Promise<string> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -624,7 +624,7 @@ FROM task_hierarchy pt
       }
 
       await queryRunner.commitTransaction();
-      return { success: true };
+      return dto.taskId;
     } catch (err) {
       await queryRunner.rollbackTransaction();
       throw new Error(`更新失败：${(err as any).message}`);
@@ -634,7 +634,7 @@ FROM task_hierarchy pt
   }
 
   //创建新的任务 同步修改任务标签表
-  async createdPersonalTask(userId: any, dto: CreatePersonalTaskDto): Promise<any> {
+  async createdPersonalTask(userId: any, dto: CreatePersonalTaskDto): Promise<string | null> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -703,8 +703,6 @@ FROM task_hierarchy pt
       //判断标签id
       // 如果有任何标签需要添加（包括已有和新建）
       if (Array.isArray(dto?.addTagIds) && dto.addTagIds.length > 0) {
-        // const now = new Date().toISOString();
-
         const values = dto.addTagIds.map((tagId) => [
           generateSnowflakeId(),
           id,
@@ -729,19 +727,42 @@ FROM task_hierarchy pt
         );
       }
       await queryRunner.commitTransaction();
-      return { success: true };
+      return id;
     } catch (error) {
       await queryRunner.rollbackTransaction();
       throw new Error(`创建失败：${(error as any).message}`);
     } finally {
       await queryRunner.release();
     }
+  }
+  async deletePersonalTask(userId: string, taskIds: string[]): Promise<string[]> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    throw new Error('Method not implemented.');
+    try {
+      const deletedIds: string[] = [];
+
+      for (const taskId of taskIds) {
+        const result = await queryRunner.query(`DELETE FROM personal_task WHERE task_id = ? AND created_by = ?`, [taskId, userId]);
+
+        const affected = result?.affectedRows ?? result?.affected ?? 0;
+
+        if (affected > 0) {
+          deletedIds.push(taskId);
+        }
+      }
+
+      await queryRunner.commitTransaction();
+      return deletedIds;
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw new Error(`删除任务失败：${(err as any).message}`);
+    } finally {
+      await queryRunner.release();
+    }
   }
-  async deletePersonalTask(userId: any, taskId: string): Promise<boolean> {
-    throw new Error('Method not implemented.');
-  }
+
   //获取xx时间之后所有修改的任务   需要判断上下级关系  如果改变做出处理
   async findPersonalTaskUpdate(userId: string, time: Date): Promise<any[]> {
     const sql = `
@@ -751,8 +772,223 @@ FROM task_hierarchy pt
   LEFT JOIN  check_rule c 
   WHERE pt.update_at >?
   AND    pt.create_by=?
+  AND pt.status=1
     `;
     const result = await this.dataSource.query(sql, [time, userId]);
     return result;
+  }
+
+  async logicDeletePersonalTask(userId: string, taskIds: string[]): Promise<string[]> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    const successTaskIds: string[] = [];
+
+    try {
+      for (const taskId of taskIds) {
+        const result = await queryRunner.query(
+          `UPDATE personal_task
+         SET status = ?, updated_at = NOW()
+         WHERE task_id = ? AND created_by = ? AND status != ?`,
+          [TaskStatusEnum.DELETED, taskId, userId, TaskStatusEnum.DELETED]
+        );
+
+        const affected = result[0]?.affectedRows ?? 0;
+        if (affected > 0) {
+          successTaskIds.push(taskId);
+
+          // 删除相关联表数据
+          await queryRunner.query(
+            `
+          UPDATE checkin_rule
+          SET status = ?, updated_at = NOW()
+          WHERE task_id = ?`,
+            [TaskStatusEnum.DELETED, taskId]
+          );
+
+          await queryRunner.query(
+            `
+          UPDATE personal_task_checkin
+          SET status = ?, updated_at = NOW()
+          WHERE task_id = ?`,
+            [TaskStatusEnum.DELETED, taskId]
+          );
+
+          await queryRunner.query(
+            `
+          UPDATE personal_task_tag
+          SET is_deleted = 1, updated_at = NOW()
+          WHERE task_id = ?`,
+            [TaskStatusEnum.DELETED, taskId]
+          );
+        }
+      }
+
+      await queryRunner.commitTransaction();
+      return successTaskIds;
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw new Error('逻辑删除失败: ' + (err as any).message);
+    } finally {
+      await queryRunner.release();
+    }
+  }
+  async findTopPersonalTasksByUserId(userId: string, nextCursor: TaskCursorDto, limit: number = 10): Promise<PaginatedResult<RepositoryPersonalTaskDto> | null> {
+    //解析nextCursor
+    let cursorConditionSql = ` `;
+    let param: any[] = [userId];
+    if (nextCursor?.createdAt && nextCursor?.taskId) {
+      cursorConditionSql = ` AND (
+        ptt.created_at < ? OR 
+        (ptt.created_at = ? AND ptt.task_id < ?)
+      )`;
+      param.push(nextCursor.createdAt, nextCursor.createdAt, nextCursor.taskId);
+    }
+    //查询所有的taskId
+    const sql = `
+    SELECT  p.task_id ,created_at
+FROM personal_task p 
+WHERE p.created_at=?
+  ${cursorConditionSql}
+ ORDER BY pt.created_at DESC, pt.task_id DESC
+ LIMIT ?
+    `;
+    param.push(limit + 1);
+    const rawResults = await this.dataSource.query(sql, param);
+    if (rawResults?.length <= 0) {
+      return null;
+    }
+    //计算浮标
+    const taskIds = rawResults.map((row) => row.taskId);
+    const temp: { task_id: string; created_at: string } = taskIds;
+    const hasNext = taskIds.length > limit;
+    const taskIdsLimited = taskIds.slice(0, limit);
+    const placeholders = taskIdsLimited.map(() => '?').join(',');
+
+    // 获取tagid
+    const detailResults = await this.dataSource.query(`SELECT ${attributesPersonalTask},pt.tag_id AS tagId, 0 AS level  FROM personal_task_tag  WHERE task_id IN (${placeholders}) `);
+    //通过id获取任务具备的tagids
+
+    const tasks = Array.from(rawResults.values());
+
+    // Step 4: 计算 nextCursor
+    const last = temp[tasks.length - 1];
+    const next = hasNext
+      ? {
+          createdAt: last.createdAt,
+          taskId: last.taskId,
+        }
+      : null;
+
+    return {
+      data: detailResults,
+      nextCursor: next ? encodeCursor(next, 'TaskUpdatedCursor') : null,
+      hasNextPage: hasNext,
+    };
+  }
+
+  private isRuleValidForDate(rule: CheckinRule, date: Date): boolean {
+    const dayOfWeek = date.getDay(); // 0: Sunday - 6: Saturday
+    const dayOfMonth = date.getDate(); // 1 - 31
+    const daysString = Array.isArray(rule.days) ? JSON.stringify(rule.days) : (rule.days ?? '[]');
+
+    let weekDays: number[] = [];
+    let monthDays: number[] = [];
+    if (rule.ruleType === 'WEEKLY') {
+      weekDays = JSON.parse(daysString);
+    }
+    if (rule.ruleType === 'MONTHLY') {
+      monthDays = JSON.parse(daysString);
+    }
+
+    switch (rule.ruleType) {
+      case 'DAILY':
+        return true;
+
+      case 'WEEKLY':
+        return weekDays.includes(dayOfWeek);
+
+      case 'MONTHLY':
+        return monthDays.includes(dayOfMonth);
+
+      case 'INTERVAL': {
+        if (!rule.intervalDays) return false;
+        const createdAt = new Date(rule.createdAt);
+        const diff = Math.floor((date.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
+        return diff % rule.intervalDays === 0;
+      }
+
+      default:
+        return false;
+    }
+  }
+
+  private getTomorrowDate(): Date {
+    const now = new Date();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(now.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0); // start of the day
+    return tomorrow;
+  }
+
+  async findPersonalTaskForTomorrow(userId: string, nextCursor: TaskCursorDto, limit: number = 10): Promise<PaginatedResult<RepositoryPersonalTaskDto> | null> {
+    const tomorrow = this.getTomorrowDate();
+    let cursorConditionSql = ` `;
+
+    const rules = await this.dataSource.query(
+      `
+    SELECT 
+    rule_id   AS ruleId
+    rule_type AS ruleType
+    days  AS days
+    times  AS  times
+    interval_days AS intervalDays
+    FROM  checkcin_rule 
+    WHERE created_at=?
+    `,
+      [userId]
+    );
+
+    const validRuleIds: string[] = (rules as SimpleCheckinRuleDto[])
+      .filter((rule: SimpleCheckinRuleDto) => this.isRuleValidForDate(rule as CheckinRule, tomorrow))
+      .map((rule: SimpleCheckinRuleDto) => rule.ruleId)
+      .filter((id): id is string => typeof id === 'string' && id !== undefined);
+
+    if (validRuleIds.length === 0) return null;
+
+    let param: any[] = [userId, ...validRuleIds];
+    if (nextCursor?.createdAt && nextCursor?.taskId) {
+      cursorConditionSql = ` AND (
+        pt.created_at < ? OR 
+        (pt.created_at = ? AND pt.task_id < ?)
+      )`;
+      param.push(nextCursor.createdAt, nextCursor.createdAt, nextCursor.taskId);
+    }
+    param.push(limit + 1);
+    // 3. 查询符合规则的任务（假设 task 表中有 rule_id 字段）
+    const tasks = await this.dataSource.query(
+      `SELECT 
+          ${attributesPersonalTask},
+          ptt.tag_id AS  tagId
+        FROM personal_task pt
+        WHERE pt.task_id in ${validRuleIds}
+        LEFT JOIN checkin_rule cr ON pt.task_id = cr.rule_id
+        LEFT JOIN personal_task_tag ptt ON ptt.personal_task_id = pt.task_id
+             AND ${cursorConditionSql}
+       ORDER BY pt.created_at DESC, pt.task_id DESC
+        LIMIT ?
+    `,
+      param
+    );
+
+    //判断浮标  不同点在于  这里使用的是validRuleIds的长度判断是否有下一页
+    const hasNext = validRuleIds.length >= limit;
+    const next: { taskId: string; createdAt: string } = tasks[tasks.length - 1];
+    return {
+      data: tasks,
+      nextCursor: hasNext ? encodeCursor(next, 'taskCursor') : null,
+      hasNextPage: hasNext,
+    };
   }
 }

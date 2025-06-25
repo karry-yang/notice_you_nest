@@ -1,6 +1,7 @@
 import { Injectable, Inject } from '@nestjs/common';
 import Redis from 'ioredis';
 import { IRedisService } from './redis.interface';
+import { en, fa, tr } from '@faker-js/faker/.';
 
 @Injectable()
 export class RedisService implements IRedisService {
@@ -50,5 +51,34 @@ export class RedisService implements IRedisService {
     }
 
     await multi.exec();
+  }
+  async lpush(key: string, ...values: string[]): Promise<number> {
+    return this.redisClient.lpush(key, ...values);
+  }
+
+  async rpush(key: string, ...values: string[]): Promise<number> {
+    return this.redisClient.rpush(key, ...values);
+  }
+
+  async lrange(key: string, start = 0, end = -1): Promise<string[]> {
+    return this.redisClient.lrange(key, start, end);
+  }
+  async exists(key: string): Promise<boolean> {
+    const result = await this.redisClient.exists(key);
+    return result === 1;
+  }
+  async expire(key: string, ttl: number): Promise<void> {
+    await this.redisClient.expire(key, ttl);
+  }
+  async zadd(key: string, expireAt: number, taskId: string) {
+    await this.redisClient.zadd(key, expireAt, taskId);
+  }
+
+  async zrangebyscore(key: string, now: number): Promise<any[]> {
+    return await this.redisClient.zrangebyscore(key, now, '+inf');
+  }
+
+  async zremrangebyscore(key: string, start: number, end: number): Promise<void> {
+    await this.redisClient.zremrangebyscore(key, start, end);
   }
 }

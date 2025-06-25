@@ -8,6 +8,8 @@ import { IPersonalTask } from './interfaces/personal-task.interface';
 import { PersonalCheckin } from 'src/modules/checkIn/entities/personal-checkin.entity';
 
 import { PersonalTaskTag } from './personal-task-tag.entity';
+import { TaskTypeEnum } from '@shared/enum/TaskTypeEnum';
+import { TaskStatusEnum } from '@shared/enum/TaskStatusEnum';
 
 @Entity('personal_task')
 export class PersonalTask extends ManualAuditableBase implements IPersonalTask {
@@ -40,10 +42,12 @@ export class PersonalTask extends ManualAuditableBase implements IPersonalTask {
   @Column({ name: 'task_end_time', type: 'timestamp', nullable: true, comment: '任务结束时间' })
   taskEndTime!: Date;
 
-  // @Column({ name: 'task_cretor_id', type: 'bigint', nullable: true, comment: '负责人ID' })
-  // taskCretorId!: string;
+
   @Column({ name: 'has_files', type: 'bool', default: false, comment: '是否有文件' })
   hasFiles!: boolean;
+
+  // @Column({name:'task_status',type:'tinyint', comment:'任务完成状态 '})
+  // taskStatus!: TaskStatusEnum;
   // === 自引用关系 ===
   @ManyToOne(() => PersonalTask, (task) => task.children, { nullable: true })
   @JoinColumn({ name: 'task_parent_id', referencedColumnName: 'taskId' })
@@ -58,4 +62,7 @@ export class PersonalTask extends ManualAuditableBase implements IPersonalTask {
   checkes!: PersonalCheckin[];
   @OneToMany(() => PersonalTaskTag, (personalTaskTag) => personalTaskTag.personalTaskId)
   personalTaskTags!: PersonalTaskTag[];
+
+  @OneToOne(()=>CheckinRule,(checkinRule)=>checkinRule.ruleId)
+  checkinRule?:CheckinRule
 }

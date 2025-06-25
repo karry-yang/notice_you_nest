@@ -8,9 +8,8 @@
  * 2：DELECT 弃用
  */
 
-export enum StatusEnum {
-    INACTIVE = 0,
-    ACTIVE = 1,
-    DELECT=2
-  }
-  
+export enum TaskStatusEnum {
+  INACTIVE = 0,
+  ACTIVE = 1,
+  DELETED = 2,
+}

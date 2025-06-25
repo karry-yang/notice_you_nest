@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongoClient, Db } from 'mongodb';
 import { MongodbService } from './mongodb.service';
+import { PersonalTaskMongoService } from './service/personal-task-mongo.service';
+import { PublicTaskMongoService } from './service/public-task-mongo.service';
 
 @Module({
   imports: [ConfigModule],
@@ -19,7 +21,9 @@ import { MongodbService } from './mongodb.service';
       inject: [ConfigService],
     },
     MongodbService,
+    PersonalTaskMongoService,
+    PublicTaskMongoService,
   ],
-  exports: [MongodbService],
+  exports: [MongodbService, PersonalTaskMongoService, PublicTaskMongoService],
 })
 export class MongodbModule {}

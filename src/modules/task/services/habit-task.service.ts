@@ -14,8 +14,6 @@ import { RateDto } from 'src/modules/checkIn/dto/common/rate.dto';
 import { generateSnowflakeId } from '@shared/lib/snowflake';
 import { IHabitGroupRepository } from '@task/repositories/interfaces/habit-group.repository';
 import { HabitGroup } from '@task/entities/habit-group.entity';
-import { da } from '@faker-js/faker/.';
-
 @Injectable()
 export class HabitTaskService implements IHabitTaskService {
   constructor(
