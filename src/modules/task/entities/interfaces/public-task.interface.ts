@@ -32,8 +32,8 @@ export interface IPublicTask extends IManualAuditableBase {
   //类型 department   organization   user
   taskListicleType: ListicleTypeEnum;
   taskRectorId: string;
-  hasFiles:boolean;
-
+  hasFiles: boolean;
+  path: string | null;
   //多对一
   parent?: PublicTask;
 

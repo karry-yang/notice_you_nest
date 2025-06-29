@@ -3,7 +3,7 @@ import { IPersonalTaskRepository } from './interfaces/personal-task.repository.i
 import { PersonalTask } from '@task/entities/personal-task.entity';
 import { encodeCursor, PaginatedResult, TaskUpdatedCursor } from 'src/common/types/paginatedResult.interface';
 import { DataSource, Repository } from 'typeorm';
-import { TaskCursorDto, TaskLevelCursorDto } from 'src/common/dto/paginatedResult.dto';
+import { TaskCursorDto } from 'src/common/dto/paginatedResult.dto';
 import { PersonalTaskFilterDto } from '@task/dto/personalTask/psersonal-task-filter.dto';
 import { attributesPersonalTask } from './sql';
 import { CreatePersonalTaskDto } from '@task/dto/personalTask/create-personal-task.dto';
@@ -16,11 +16,10 @@ import { IListicleRepository } from './interfaces/listicle.repository.interface'
 import { generateSnowflakeId } from '@shared/lib/snowflake';
 import { TaskTypeEnum } from '@shared/enum/TaskTypeEnum';
 import { RepositoryPersonalTaskDto } from '@task/dto/personalTask/reposotory-personal-task.dto';
-import { ne } from '@faker-js/faker/.';
 import { TaskStatusEnum } from '@shared/enum/TaskStatusEnum';
-import { DetailPersonalTaskDto } from '@task/dto/personalTask/detail-personal-task.dto';
 import { CheckinRule } from '@task/entities/task-checkin-rule.entity';
 import { SimpleCheckinRuleDto } from '@task/dto/checkinRule/simple-checkin-rule.dto';
+import { RowStatusEnum } from '@shared/enum/RowStatusEnum';
 
 /**
  * personTask 需要直接携带tag的属性和listicle属性  前端会预加载所有的清单信息和标签信息  后端只需要返回tagids listile  cheinRuleId
@@ -778,62 +777,54 @@ ${cursorCondition}
     return result;
   }
 
-  async logicDeletePersonalTask(userId: string, taskIds: string[]): Promise<string[]> {
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
+async updatePersonalTaskStatus( userId: string,taskIds: string[],targetStatus: RowStatusEnum,  relatedTargetStatus: RowStatusEnum): Promise<string[]> {
+  const queryRunner = this.dataSource.createQueryRunner();
+  await queryRunner.connect();
+  await queryRunner.startTransaction();
 
-    const successTaskIds: string[] = [];
+  const successTaskIds: string[] = [];
 
-    try {
-      for (const taskId of taskIds) {
-        const result = await queryRunner.query(
-          `UPDATE personal_task
+  try {
+    for (const taskId of taskIds) {
+      const result = await queryRunner.query(
+        `UPDATE personal_task
          SET status = ?, updated_at = NOW()
          WHERE task_id = ? AND created_by = ? AND status != ?`,
-          [TaskStatusEnum.DELETED, taskId, userId, TaskStatusEnum.DELETED]
+        [targetStatus, taskId, userId, targetStatus] // 避免重复写入相同状态
+      );
+
+      const affected = result?.[0]?.affectedRows ?? result?.affected ?? 0;
+      if (affected > 0) {
+        successTaskIds.push(taskId);
+
+        // 更新关联表
+        await queryRunner.query(
+          `UPDATE checkin_rule SET status = ?, updated_at = NOW() WHERE task_id = ?`,
+          [relatedTargetStatus, taskId]
         );
 
-        const affected = result[0]?.affectedRows ?? 0;
-        if (affected > 0) {
-          successTaskIds.push(taskId);
+        await queryRunner.query(
+          `UPDATE personal_task_checkin SET status = ?, updated_at = NOW() WHERE task_id = ?`,
+          [relatedTargetStatus, taskId]
+        );
 
-          // 删除相关联表数据
-          await queryRunner.query(
-            `
-          UPDATE checkin_rule
-          SET status = ?, updated_at = NOW()
-          WHERE task_id = ?`,
-            [TaskStatusEnum.DELETED, taskId]
-          );
-
-          await queryRunner.query(
-            `
-          UPDATE personal_task_checkin
-          SET status = ?, updated_at = NOW()
-          WHERE task_id = ?`,
-            [TaskStatusEnum.DELETED, taskId]
-          );
-
-          await queryRunner.query(
-            `
-          UPDATE personal_task_tag
-          SET is_deleted = 1, updated_at = NOW()
-          WHERE task_id = ?`,
-            [TaskStatusEnum.DELETED, taskId]
-          );
-        }
+        await queryRunner.query(
+          `UPDATE personal_task_tag SET  status = ?, updated_at = NOW() WHERE task_id = ?`,
+          [relatedTargetStatus, taskId]
+        );
       }
-
-      await queryRunner.commitTransaction();
-      return successTaskIds;
-    } catch (err) {
-      await queryRunner.rollbackTransaction();
-      throw new Error('逻辑删除失败: ' + (err as any).message);
-    } finally {
-      await queryRunner.release();
     }
+
+    await queryRunner.commitTransaction();
+    return successTaskIds;
+  } catch (err) {
+    await queryRunner.rollbackTransaction();
+    throw new Error('任务状态更新失败: ' + (err as any).message);
+  } finally {
+    await queryRunner.release();
   }
+}
+
   async findTopPersonalTasksByUserId(userId: string, nextCursor: TaskCursorDto, limit: number = 10): Promise<PaginatedResult<RepositoryPersonalTaskDto> | null> {
     //解析nextCursor
     let cursorConditionSql = ` `;
@@ -991,4 +982,76 @@ WHERE p.created_at=?
       hasNextPage: hasNext,
     };
   }
+
+async findPersonalTasksLevelByUserId(userId: string, taskIds: string[]): Promise<RepositoryPersonalTaskDto[]> {
+  if (!taskIds.length) return [];
+
+  const sql = `
+    WITH RECURSIVE task_hierarchy AS (
+      SELECT p.*, 0 AS level
+      FROM personal_task p
+      WHERE p.created_by = ? AND p.task_id IN (?) AND p.status = 1
+  
+      UNION ALL
+  
+      SELECT child.*, th.level + 1 AS level
+      FROM personal_task child
+      JOIN task_hierarchy th ON child.task_parent_id = th.task_id
+      WHERE th.level < 6
+    )
+    SELECT 
+      ${attributesPersonalTask}, pt.level AS level, ptt.tag_id AS tagId
+    FROM task_hierarchy pt
+    LEFT JOIN checkin_rule cr ON pt.task_id = cr.rule_id
+    LEFT JOIN personal_task_tag ptt ON ptt.personal_task_id = pt.task_id
+    WHERE cr.task_type = '${TaskTypeEnum.PERSONAL}'
+      AND pt.created_by = ?
+    ORDER BY pt.level DESC
+  `;
+
+  return await this.dataSource.query(sql, [userId, taskIds, userId]);
+}
+
+
+  //真实删除  联合删除相同任务id的打卡规则  删除person_taks_tag中的任务id相等的数据  返回删除的ids  启动事务
+  async realDeletePersonalTask(userId: string, taskIds: string[]): Promise<string[]> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    const deletedIds: string[] = [];
+
+    try {
+      for (const taskId of taskIds) {
+        // 删除任务
+        const result = await queryRunner.query(`DELETE FROM personal_task WHERE task_id = ? AND created_by = ?`, [taskId, userId]);
+        const affected = result?.affectedRows ?? result?.affected ?? 0;
+
+        if (affected > 0) {
+          deletedIds.push(taskId);
+
+          // 删除相关的打卡规则
+          await queryRunner.query(`DELETE FROM checkin_rule WHERE rule_id = ?`, [taskId]);
+
+          // 删除相关的打卡记录
+          await queryRunner.query(`DELETE FROM personal_task_checkin WHERE task_id = ?`, [taskId]);
+
+          // 删除相关的任务标签
+          await queryRunner.query(`DELETE FROM personal_task_tag WHERE task_id = ?`, [taskId]);
+        }
+      }
+
+      await queryRunner.commitTransaction();
+      return deletedIds;
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw new Error(`真实删除任务失败：${(err as any).message}`);
+    } finally {
+      await queryRunner.release();
+    }
+  }
+  
+
+
+
 }

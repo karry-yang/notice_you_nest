@@ -9,5 +9,6 @@ export interface Ilisticle extends IManualAuditableBase {
   organizationId?: string ;
   departmentId?: string ;
   userId?: string ;
+  path: string | null;
 
 }

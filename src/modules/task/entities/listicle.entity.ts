@@ -1,7 +1,7 @@
 import { StatusEnum } from '@shared/enum/RowStatusEnum';
 import { Ilisticle } from './interfaces/listicle.interface';
 import { ManualAuditableBase } from 'src/common/shared/baseEntity/manualAuditable.entity';
-import { Column, Entity, OneToMany, PrimaryColumn } from 'typeorm';
+import { Column, Entity, Index, OneToMany, PrimaryColumn } from 'typeorm';
 import { ListicleTypeEnum } from 'src/common/shared/enum/ListicleTypeEnum';
 
 /**
@@ -33,4 +33,8 @@ export class Listicle extends ManualAuditableBase implements Ilisticle {
 
   @Column({ name: 'user_id', type: 'bigint', nullable: true, comment: '清单归属的用户' })
   userId?: string;
+
+  @Index()
+  @Column({ name: 'path', type: 'varchar', length: 255, nullable: true, comment: '任务路径' })
+  path: string | null = null;
 }
