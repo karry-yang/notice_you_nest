@@ -5,6 +5,9 @@ import { PaginatedResult } from 'src/common/types/paginatedResult.interface';
 import { CreatePersonalTaskDto } from '@task/dto/personalTask/create-personal-task.dto';
 import { UpdatePersonalTaskDto } from '@task/dto/personalTask/update-personal-task.dto';
 import { RepositoryPersonalTaskDto } from '@task/dto/personalTask/reposotory-personal-task.dto';
+import { an } from '@faker-js/faker/dist/airline-BUL6NtOJ';
+import { TaskStatusEnum } from '@shared/enum/TaskStatusEnum';
+import { RowStatusEnum } from '@shared/enum/RowStatusEnum';
 
 /**
  *标签是多对多的关系关系 
@@ -105,9 +108,12 @@ export interface IPersonalTaskRepository {
   createdPersonalTask(userId: string, dto: CreatePersonalTaskDto): Promise<string | null>;
   deletePersonalTask(userId: string, taskIds: string[]): Promise<string[]>;
   //逻辑删除
-  logicDeletePersonalTask(userId: string, taskIds: string[]): Promise<string[]>;
+  updatePersonalTaskStatus(userId: string, taskIds: string[], targetStatus: RowStatusEnum, relatedTargetStatus: RowStatusEnum): Promise<string[]>;
   updatePersonalTask(userId: string, dto: UpdatePersonalTaskDto): Promise<string | null>;
   findTopPersonalTasksByUserId(userId: string, nextCursor: TaskCursorDto, limit: number): Promise<PaginatedResult<RepositoryPersonalTaskDto> | null>;
 
   findPersonalTaskForTomorrow(userId: string, nextCursor: TaskCursorDto, limit: number): Promise<PaginatedResult<RepositoryPersonalTaskDto> | null>;
+  //查询任务所在层级
+  findPersonalTasksLevelByUserId(userId: string, taskId: string[]): Promise<RepositoryPersonalTaskDto[]>;
+  //id批量查询 获取的是简单的任务数据  项目中没设计完全满足表的dto所有这里使用的any
 }

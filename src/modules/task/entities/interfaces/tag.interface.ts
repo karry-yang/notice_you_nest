@@ -10,5 +10,6 @@ export interface ITag extends IManualAuditableBase {
   tagDescription: string;
   userId: string;
   parentId?:string;
+  path: string | null;
   personalTaskTags?:PersonalTaskTag[]
 }

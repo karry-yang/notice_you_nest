@@ -1,6 +1,6 @@
 import { ManualAuditableBase } from 'src/common/shared/baseEntity/manualAuditable.entity';
 import { ITag } from './interfaces/tag.interface';
-import { Column, Entity, OneToMany, PrimaryColumn } from 'typeorm';
+import { Column, Entity, Index, OneToMany, PrimaryColumn } from 'typeorm';
 import { PersonalTask } from './personal-task.entity';
 import { PersonalTaskTag } from './personal-task-tag.entity';
 
@@ -23,6 +23,10 @@ export class Tag extends ManualAuditableBase implements ITag {
 
   @Column({ name: 'parent_id', type: 'bigint', default: null, comment: '父级别标签id' })
   parentId?: string;
+
+  @Index()
+  @Column({ name: 'path', type: 'varchar', length: 255, nullable: true, comment: '任务路径' })
+  path: string | null = null;
 
   @OneToMany(() => PersonalTaskTag, (personalTaskTag) => personalTaskTag.tag)
   personalTaskTags?: PersonalTaskTag[];

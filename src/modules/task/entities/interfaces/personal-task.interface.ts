@@ -39,6 +39,6 @@ export interface IPersonalTask extends IManualAuditableBase {
   //打卡数组 关联中间表  一个任务对应多个打卡表数据   一个用户对于一个任务有多个打卡数据
   checkes: PersonalCheckin[];
   personalTaskTags: PersonalTaskTag[];
-  // //任务状态
-  // taskStatus:TaskStatusEnum;
+
+  path: string | null;
 }

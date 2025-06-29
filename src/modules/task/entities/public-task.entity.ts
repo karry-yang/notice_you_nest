@@ -56,6 +56,10 @@ export class PublicTask extends ManualAuditableBase implements IPublicTask {
   @Column({ name: 'task_cretor_id', type: 'bigint', nullable: true, comment: '负责人ID' })
   taskRectorId!: string;
 
+    @Index()
+  @Column({ name: 'path', type: 'varchar', length: 255, nullable: true, comment: '任务路径' })
+  path: string | null = null;
+
   // === 自引用关系 ===
   @ManyToOne(() => PublicTask, (task) => task.children, { nullable: true })
   @JoinColumn({ name: 'task_parentId' })

@@ -4,30 +4,21 @@ import { IPersonalTaskRepositoryToken } from 'src/common/token/tokens';
 import { IPersonalTaskRepository } from '@task/repositories/interfaces/personal-task.repository.interface';
 import { CreatePersonalTaskDto } from '@task/dto/personalTask/create-personal-task.dto';
 import { UpdatePersonalTaskDto } from '@task/dto/personalTask/update-personal-task.dto';
-import { PersonalTask } from '@task/entities/personal-task.entity';
 import { encodeCursor, PaginatedResult, TaskCursor } from 'src/common/types/paginatedResult.interface';
-import { BasePersonalTaskSummaryDto } from '@task/dto/personalTask/personal-task-summary.dto';
 import { PersonalTaskFilterDto } from '@task/dto/personalTask/psersonal-task-filter.dto';
 import { BasePersonalTaskDto } from '@task/dto/personalTask/base-personal-task.dto';
 import { SimpleCheckinRuleDto } from '@task/dto/checkinRule/simple-checkin-rule.dto';
 import { RepositoryPersonalTaskDto } from '@task/dto/personalTask/reposotory-personal-task.dto';
 import { plainToInstance } from 'class-transformer';
-import { TaskTypeEnum } from '@shared/enum/TaskTypeEnum';
 import { DetailPersonalTaskDto } from '@task/dto/personalTask/detail-personal-task.dto';
 import { buildCheckinRuleDto } from 'src/common/utils/buildCheckRuleDto.util';
-import { MongodbService } from '@database/mongodb/mongodb.service';
 import { PersonalTaskMongoService } from '@database/mongodb/service/personal-task-mongo.service';
-import { error } from 'console';
-import { any } from 'async';
 import { TaskUpdatedCursorDto } from 'src/common/dto/paginatedResult.dto';
-import { PersonalTaskDoc } from '@database/mongodb/schemas/personal-task.schema';
-import { create } from 'domain';
+
 import { buildPersonTaskDoc } from 'src/common/utils/buildPersonalTaskDoc.util';
 import { RowStatusEnum } from '@shared/enum/RowStatusEnum';
-import { TaskStatusEnum } from '@shared/enum/TaskStatusEnum';
 import { QueryDetailDto } from '@task/dto/personalTask/queryDetail.dao';
 import { RedisServiceForPersonalTask } from '@database/redis/servers/forPersonalTask';
-import { r } from '@faker-js/faker/dist/airline-BUL6NtOJ';
 
 @Injectable()
 export class PersonalTaskService implements IPersonalTaskService {
@@ -42,6 +33,9 @@ export class PersonalTaskService implements IPersonalTaskService {
   }
 
   private groupTasksById(rows: any[]): Map<string, DetailPersonalTaskDto> {
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return new Map<string, DetailPersonalTaskDto>();
+    }
     const taskMap = new Map<string, DetailPersonalTaskDto>();
 
     for (const row of rows) {
@@ -72,6 +66,58 @@ export class PersonalTaskService implements IPersonalTaskService {
     if (typeof tagId === 'string' && !task.tagIds.includes(tagId)) {
       task.tagIds.push(tagId);
     }
+  }
+  private shouldFetchParentChildren(dto: UpdatePersonalTaskDto): boolean {
+    return !!(dto?.taskParentId && dto?.level);
+  }
+
+  private async fetchParentWithChildren(userId: string, dto: UpdatePersonalTaskDto): Promise<DetailPersonalTaskDto[]> {
+    if (!dto.taskParentId) {
+      throw new Error('taskParentId is required');
+    }
+    if (!dto.level) {
+      throw new Error('level is required');
+    }
+    const result = await this.personalRep.finPersonalTasksWithChildrensByTaskId(userId, dto.taskParentId, dto.level, 1000);
+    if (result?.data) {
+      const taskMap = this.groupTasksById(result.data);
+      return Array.from(taskMap.values());
+    }
+    return [];
+  }
+
+  private async handleContentUpdate(userId: string, dto: UpdatePersonalTaskDto): Promise<string | null> {
+    const time = new Date();
+
+    if (!dto.taskObjectId && Array.isArray(dto.content) && dto.content.length > 0) {
+      const mongoDoc = buildPersonTaskDoc(dto, userId, time);
+      const result = await this.mongodbService.insert(mongoDoc);
+      dto.taskObjectId = result.insertedId.toHexString();
+      return (await this.personalRep.updatePersonalTask(userId, dto)) ?? null;
+    } else if (dto.taskObjectId && dto.content) {
+      await Promise.all([this.mongodbService.updateByTaskId(dto.taskId, dto.content), this.personalRep.updatePersonalTask(userId, dto)]);
+      return dto.taskId;
+    }
+    return null;
+  }
+
+  private shouldClearCache(updateResult: DetailPersonalTaskDto, rawParentWithChildrens: DetailPersonalTaskDto[]): boolean {
+    return (
+      updateResult?.level !== undefined &&
+      updateResult.taskParentId !== undefined &&
+      rawParentWithChildrens.length > 0 &&
+      rawParentWithChildrens[0].level !== undefined &&
+      !!rawParentWithChildrens[0].level &&
+      updateResult.taskParentId !== rawParentWithChildrens[0].taskParentId
+    );
+  }
+
+  private async updateCaches(userId: string, updateResult: DetailPersonalTaskDto): Promise<void> {
+    await Promise.all([
+      this.redisServiceForPersonalTask.setHotPersonalTasksList(userId, updateResult.taskId),
+      this.redisServiceForPersonalTask.setHotPersonalTaskContent(userId, updateResult.taskId, updateResult),
+      this.redisServiceForPersonalTask.setUpdatedPersonalTasksList(userId, updateResult.taskId),
+    ]);
   }
   //仅仅是获取个人任务和打卡数据不涉及标签和清单ids
   async getPersonalTaskByTaskId(userId: string, taskId: string): Promise<BasePersonalTaskDto | null> {
@@ -240,34 +286,52 @@ export class PersonalTaskService implements IPersonalTaskService {
   }
   //创建任务
   async createPersonal(userId: string, createPersonalTask: CreatePersonalTaskDto): Promise<DetailPersonalTaskDto | null> {
+    //  创建任务
     const rawResult = await this.personalRep.createdPersonalTask(userId, createPersonalTask);
     if (rawResult) {
-      const createResult = await this.getDetailPersonalTaskByTaskId(userId, rawResult);
-      //创建成功
-      if (createResult) {
-        try {
-          // 使用allSettled来确保所有操作都执行完毕
-          const results = await Promise.allSettled([
-            this.redisServiceForPersonalTask.setHotPersonalTasksList(userId, createResult.taskId),
-            this.redisServiceForPersonalTask.setHotPersonalTaskContent(userId, createResult.taskId, createResult),
-            this.redisServiceForPersonalTask.setCreatedPersonalTasksList(userId, createResult.taskId),
-          ]);
+      //查询创建成功的数据
+      const createResults = await this.personalRep.findPersonalTaskLevelByUserId(userId, rawResult);
+      // 整合数据
+      if (!createResults || createResults.length <= 0) {
+        console.error('创建任务失败，未找到相关数据', rawResult);
+        return null;
+      }
+      const taskMap = this.groupTasksById(createResults);
+      const createResult = taskMap[rawResult] as DetailPersonalTaskDto;
 
-          // 检查是否有失败的缓存操作
-          const failedOperations = results.filter((result) => result.status === 'rejected');
-          if (failedOperations.length > 0) {
-            console.warn(
-              '部分缓存更新失败:',
-              failedOperations.map((op) => op.reason)
-            );
-            // 可以在这里添加额外的错误处理逻辑
-          }
+      // 将查询结果转换为DetailPersonalTaskDto
 
-          return createResult;
-        } catch (err) {
-          console.error('意外的缓存更新错误', err);
-          return createResult; // 仍然返回创建结果
+      try {
+        // 使用allSettled来确保所有操作都执行完毕
+        const results = await Promise.allSettled([
+          //设置热点任务列表
+          this.redisServiceForPersonalTask.setHotPersonalTasksList(userId, createResult.taskId),
+          //设置热点任务内容
+          this.redisServiceForPersonalTask.setHotPersonalTaskContent(userId, createResult.taskId, createResult),
+          //设置最近创建的任务列表
+          this.redisServiceForPersonalTask.setCreatedPersonalTasksList(userId, createResult.taskId),
+        ]);
+        //检查任务有没有父亲任务为key的缓存   有的话 需要添加创建的子任务  条件是任务的父亲任务id和层级
+        //但是父级任务要是null  说明是顶级任务 直接缓存
+
+        if (createResult.taskParentId && createResult.level) {
+          this.redisServiceForPersonalTask.setPersonalTaskLevelListBatch(userId, createResult.level, createResult.taskParentId, [createResult]);
         }
+
+        // 检查是否有失败的缓存操作
+        const failedOperations = results.filter((result) => result.status === 'rejected');
+        if (failedOperations.length > 0) {
+          console.warn(
+            '部分缓存更新失败:',
+            failedOperations.map((op) => op.reason)
+          );
+          // 可以在这里添加额外的错误处理逻辑
+        }
+
+        return createResult;
+      } catch (err) {
+        console.error('意外的缓存更新错误', err);
+        return createResult; // 仍然返回创建结果
       }
     }
     //创建失败
@@ -276,78 +340,46 @@ export class PersonalTaskService implements IPersonalTaskService {
 
   // @TODO  还需考虑修改后的层级等等  要做出缓存清除或者其他方案
   async updatePersonal(userId: string, updatePersonalTaskDto: UpdatePersonalTaskDto): Promise<DetailPersonalTaskDto | null> {
-    //需要查询该任务父级的所有子任务用于检测和修改所有层级问题  前提时获取原来的数据库数据用于比较父级任务是不是改变
-   let rawParentWithChildrens: DetailPersonalTaskDto[] = [];
-   //前端传入层级数 表示层数已经改变
-    if (updatePersonalTaskDto?.taskParentId && updatePersonalTaskDto?.level) {
-     const rawParentWithChildrensAndPagination = await this.personalRep.finPersonalTasksWithChildrensByTaskId(userId, updatePersonalTaskDto.taskParentId, updatePersonalTaskDto.level, 1000);
-     if(rawParentWithChildrensAndPagination?.data) {
-       const taskMap = this.groupTasksById(rawParentWithChildrensAndPagination.data);
-        rawParentWithChildrens = Array.from(taskMap.values());
-     }
-    }
-    //
-    const time = new Date();
-    let id: string | null = null;
+    let rawParentWithChildrens: DetailPersonalTaskDto[] = [];
 
-    //  第一次写内容，需要先写 Mongo，然后写 MySQL
-    if (!updatePersonalTaskDto.taskObjectId && Array.isArray(updatePersonalTaskDto.content) && updatePersonalTaskDto.content.length > 0) {
-      const mongoDoc = buildPersonTaskDoc(updatePersonalTaskDto, userId, time);
-      const result = await this.mongodbService.insert(mongoDoc);
-      const mongoId = result.insertedId;
-
-      updatePersonalTaskDto.taskObjectId = mongoId.toHexString();
-
-      id = (await this.personalRep.updatePersonalTask(userId, updatePersonalTaskDto)) ?? null;
+    if (this.shouldFetchParentChildren(updatePersonalTaskDto)) {
+      rawParentWithChildrens = await this.fetchParentWithChildren(userId, updatePersonalTaskDto);
     }
 
-    //  已经有 taskObjectId 的，说明之前写过内容，可并发更新
-    else if (updatePersonalTaskDto.taskObjectId && updatePersonalTaskDto.content) {
-      await Promise.all([this.mongodbService.updateByTaskId(updatePersonalTaskDto.taskId, updatePersonalTaskDto.content), this.personalRep.updatePersonalTask(userId, updatePersonalTaskDto)]);
+    const id = await this.handleContentUpdate(userId, updatePersonalTaskDto);
 
-      id = updatePersonalTaskDto.taskId;
+    if (!id) return null;
+
+    const updateResult = await this.getDetailPersonalTaskByTaskId(userId, id);
+
+    if (!updateResult) return null;
+
+    if (this.shouldClearCache(updateResult, rawParentWithChildrens)) {
+      //删除层级缓存
+      await this.redisServiceForPersonalTask.clearPersonalTaskLevelListBatch(userId);
     }
 
-    //  返回详情
-    if (id) {
-      const updateResult = await this.getDetailPersonalTaskByTaskId(userId, id);
-      //如果任务的父级id改变,或者父级id改变伴随着层级数改变了 updateResult.length>0
-      if (updateResult?.level !== undefined && updateResult.taskParentId !== undefined && rawParentWithChildrens[0].level ) {
-        if (rawParentWithChildrens.length > 0 && updateResult.taskParentId !== rawParentWithChildrens[0].taskParentId) {
-          //如果父级id改变了或者任务的层级也改变了
-          //直接清除缓存
-          await this.redisServiceForPersonalTask.setPersonalTaskLevelListBatch(userId, rawParentWithChildrens[0].level, updateResult.taskParentId, [updateResult]);
-        }
-        try {
-          await Promise.all([
-            this.redisServiceForPersonalTask.setHotPersonalTasksList(userId, updateResult.taskId),
-            this.redisServiceForPersonalTask.setHotPersonalTaskContent(userId, updateResult.taskId, updateResult),
-            this.redisServiceForPersonalTask.setUpdatedPersonalTasksList(userId, updateResult.taskId),
-          ]);
-          return updateResult;
-        } catch (err) {
-          console.error('缓存更新失败', err);
-
-          return null; // 或 return updateResult;
-        }
-      }
-
+    try {
+      await this.updateCaches(userId, updateResult);
+      return updateResult;
+    } catch (err) {
+      console.error('缓存更新失败', err);
       return null;
     }
-    return null;
   }
 
-  //删除任务   就是修改  执行 的逻辑删除
+  // repository层
+  //修改任务状态INACTIVE = 0,  ACTIVE = 1,DELECT=2
+  //删除任务   就是修改  执行  逻辑删除不修改任务的updatedAt
+  //删除任务的内容  删除打卡规则  删除打卡日志  删除标签
   async deletePersonalTask(userId: string, taskId: string[]): Promise<string[] | boolean> {
-    // repository层
-    //修改任务状态INACTIVE = 0,  ACTIVE = 1,DELECT=2
-    //级联操作删除打卡规则  打卡
-    // 删除任务内容
-    //删除打卡日志灯
-    //删除任务的标签关联
-    const data = await this.personalRep.logicDeletePersonalTask(userId, taskId);
+    //首先获取数据是不是存在  也是为了方便执行回滚  撤销的shi
+    const task = await this.personalRep.findPersonalTaskByTaskId(userId, taskId[0]);
+    const data = await this.personalRep.updatePersonalTaskStatus(userId, taskId, RowStatusEnum.DELETE, RowStatusEnum.DELETE);
     //将每次删除的数据保存再redis中
     await this.redisServiceForPersonalTask.addDeletedTask(userId, data);
+    //如果没有保存  不执行删除  返回失败
+    //同步删除分层数据
     return data;
   }
   async getChildrenPersonTasksByParentId(userId: string, parentId: string, parentLeavel: number, limit: number, nextCursor: TaskCursor): Promise<PaginatedResult<DetailPersonalTaskDto> | null> {
@@ -433,5 +465,40 @@ export class PersonalTaskService implements IPersonalTaskService {
       };
     }
     return null;
+  }
+
+  //撤销删除
+  async rollbackPersonalTask(userId: string, taskIds: string[]): Promise<DetailPersonalTaskDto[]> {
+    //从redis中获取删除的任务
+    const deletedTaskIds = await this.redisServiceForPersonalTask.getValidDeletedTaskIds(userId);
+    if (!deletedTaskIds || deletedTaskIds.length === 0) {
+      return []; //没有找到删除的任务
+    }
+    //检查缓存中的taskIds是否存在
+    const validTaskIds = deletedTaskIds.filter((id) => taskIds.includes(id));
+    if (validTaskIds.length === 0) {
+      return []; //没有找到有效的任务
+    }
+    //将任务恢复到数据库
+    const result = await this.personalRep.updatePersonalTaskStatus(userId, validTaskIds, RowStatusEnum.USEABLE, RowStatusEnum.USEABLE);
+    if (result.length === 0) {
+      return [];
+    }
+    //这里redisRemoveOk 和 taskData 是并行执行的  不一定会数据一样 但是在做真正定时删除的时候
+    //  可以考虑任务status为2(逻辑删除状态)才去删除  这样可以避开缓存没有修改的情况
+
+    const [redisRemoveOk, taskData] = await Promise.all([this.redisServiceForPersonalTask.removeDeletedTaskIds(userId, validTaskIds), this.personalRep.findPersonalTasksLevelByUserId(userId, result)]);
+
+    if (!taskData || taskData.length === 0) {
+      return []; //没有找到恢复的任务
+    }
+
+    //聚合数据
+    const taskMap = this.groupTasksById(taskData);
+    const detailTasks = Array.from(taskMap.values());
+    // //获取恢复的任务内容
+    // await this.redisServiceForPersonalTask.setHotPersonalTasksList(userId, result.taskId);
+    // await this.redisServiceForPersonalTask.setHotPersonalTaskContent(userId, result.taskId, result);
+    return detailTasks;
   }
 }

@@ -16,10 +16,65 @@ export class RedisServiceForPersonalTask {
     return `${userId}:personal_task:deleted`;
   }
 
+  //最近删除的
   async addDeletedTask(userId: string, taskIds: string[], ttlSeconds = 86400) {
     const expireAt = Math.floor(Date.now() / 1000) + ttlSeconds;
     const promises = taskIds.map((taskId) => this.redisClient.zadd(this.getPersonalDeleteKey(userId), expireAt, taskId));
     await Promise.all(promises);
+  }
+
+  //获取最近删除的任务id
+  //返回的是有效的删除任务id
+  //过期的任务id会被过滤掉
+  // async getDeletedTaskIds(userId: string): Promise<string[]> {
+  //   const now = Math.floor(Date.now() / 1000);
+  //   const deletedTaskIds = await this.redisClient.zrangebyscore(this.getPersonalDeleteKey(userId), '-inf', now);
+  //   // 过滤掉过期的任务id
+  //   return deletedTaskIds.filter((taskId) => taskId !== null && taskId !== undefined);
+  // }
+
+  //获取删除的过期的数据 每次获取过期任务的时候 可以触发手动删除
+
+  async getHasDeletedTaskIds(userId: string): Promise<string[]> {
+    const now = Math.floor(Date.now() / 1000);
+    const deletedTaskIds = await this.redisClient.zrangebyscore(this.getPersonalDeleteKey(userId), now, '+inf');
+    // 过滤掉过期的任务id
+    return deletedTaskIds.filter((taskId) => taskId !== null && taskId !== undefined);
+  }
+
+  async removeDeletedTaskIds(userId: string, taskIds: string[]): Promise<string[]> {
+    if (!taskIds?.length) return [];
+
+    try {
+      const pipeline = this.redisClient.pipeline();
+      for (const taskId of taskIds) {
+        pipeline.zrem(this.getPersonalDeleteKey(userId), taskId);
+      }
+
+      const results = await pipeline.exec();
+
+      if (!results || !Array.isArray(results)) {
+        console.warn(`[Redis删除警告] pipeline.exec 返回异常，userId=${userId}`);
+        return [];
+      }
+
+      const deletedIds: string[] = [];
+      results.forEach(([err, res]: [Error | null, unknown], index) => {
+        if (err) {
+          console.warn(`[Redis删除警告] taskId=${taskIds[index]} 删除失败`, err);
+          return;
+        }
+        if (typeof res === 'number' && res > 0) {
+          deletedIds.push(taskIds[index]);
+        }
+      });
+
+      return deletedIds;
+    } catch (err) {
+      console.warn(`[Redis删除异常] userId=${userId} taskIds=${taskIds.join(',')}`, err);
+      // 这里不抛出异常，保证调用端不会中断
+      return [];
+    }
   }
 
   async getValidDeletedTaskIds(userId: string): Promise<string[]> {
@@ -160,4 +215,21 @@ export class RedisServiceForPersonalTask {
 
     return raw.map((json) => JSON.parse(json));
   }
+  //清除用户id下所有的层级任务缓存
+  //首先获取userid下的所有满足userid:${userId}:xxx的缓存数据
+  async clearPersonalTaskLevelListBatch(userId: string): Promise<void> {
+    const pattern = `userid:${userId}:parentId:*:level:*`;
+    // 使用SCAN命令遍历所有匹配的键
+    let cursor = '0';
+    do {
+      const [nextCursor, keys] = await this.redisClient.scan(cursor, 'MATCH', pattern, 'COUNT', '100');
+      cursor = nextCursor;
+
+      if (keys.length > 0) {
+        await this.redisClient.del(...keys);
+      }
+    } while (cursor !== '0');
+  }
+
+  //删除
 }

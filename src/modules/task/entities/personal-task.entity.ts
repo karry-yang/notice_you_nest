@@ -1,5 +1,5 @@
 import { ManualAuditableBase } from 'src/common/shared/baseEntity/manualAuditable.entity';
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, OneToOne } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, OneToOne, Index } from 'typeorm';
 import { PriorityEnum } from 'src/common/shared/enum/PriorityEnum';
 
 import { CheckinRule } from './task-checkin-rule.entity';
@@ -8,8 +8,7 @@ import { IPersonalTask } from './interfaces/personal-task.interface';
 import { PersonalCheckin } from 'src/modules/checkIn/entities/personal-checkin.entity';
 
 import { PersonalTaskTag } from './personal-task-tag.entity';
-import { TaskTypeEnum } from '@shared/enum/TaskTypeEnum';
-import { TaskStatusEnum } from '@shared/enum/TaskStatusEnum';
+
 
 @Entity('personal_task')
 export class PersonalTask extends ManualAuditableBase implements IPersonalTask {
@@ -32,7 +31,6 @@ export class PersonalTask extends ManualAuditableBase implements IPersonalTask {
   @Column({ name: 'listicle_id', type: 'bigint', nullable: true, comment: '所属清单ID' })
   listicleId!: string;
 
-
   @Column({ name: 'task_description', type: 'text', nullable: true, comment: '任务简要说明' })
   taskDescription!: string;
 
@@ -42,18 +40,17 @@ export class PersonalTask extends ManualAuditableBase implements IPersonalTask {
   @Column({ name: 'task_end_time', type: 'timestamp', nullable: true, comment: '任务结束时间' })
   taskEndTime!: Date;
 
-
   @Column({ name: 'has_files', type: 'bool', default: false, comment: '是否有文件' })
   hasFiles!: boolean;
 
-  // @Column({name:'task_status',type:'tinyint', comment:'任务完成状态 '})
-  // taskStatus!: TaskStatusEnum;
+  @Index()
+  @Column({ name: 'path', type: 'varchar', length: 255, nullable: true, comment: '任务路径' })
+  path: string | null = null;
+
   // === 自引用关系 ===
   @ManyToOne(() => PersonalTask, (task) => task.children, { nullable: true })
   @JoinColumn({ name: 'task_parent_id', referencedColumnName: 'taskId' })
   parent?: PersonalTask;
-
-
 
   @OneToMany(() => PersonalTask, (task) => task.parent, { nullable: true })
   children!: PersonalTask[];
@@ -63,6 +60,6 @@ export class PersonalTask extends ManualAuditableBase implements IPersonalTask {
   @OneToMany(() => PersonalTaskTag, (personalTaskTag) => personalTaskTag.personalTaskId)
   personalTaskTags!: PersonalTaskTag[];
 
-  @OneToOne(()=>CheckinRule,(checkinRule)=>checkinRule.ruleId)
-  checkinRule?:CheckinRule
+  @OneToOne(() => CheckinRule, (checkinRule) => checkinRule.ruleId)
+  checkinRule?: CheckinRule;
 }
